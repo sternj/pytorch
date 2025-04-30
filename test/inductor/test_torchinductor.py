@@ -30,7 +30,7 @@ import torch
 import torch._dynamo.config as dynamo_config
 import torch._inductor.aoti_eager
 import torch.nn as nn
-from torch._C._dynamo.guards import assert_size_stride, assert_alignment
+from torch._C._dynamo.guards import assert_alignment, assert_size_stride
 from torch._dispatch.python import enable_python_dispatcher
 from torch._dynamo.debug_utils import aot_graph_input_parser
 from torch._dynamo.device_interface import get_interface_for_device
@@ -11880,7 +11880,7 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         )
 
     @config.patch(implicit_fallbacks=True)
-    def test_generated_code_has_size_stride_assert(self): 
+    def test_generated_code_has_size_stride_assert(self):
         def foo(x):
             return 3 * x
 
@@ -11897,13 +11897,13 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         a = torch.randn((16, 32))
 
         _, code = run_and_get_code(
-            torch.compile(fn), 
+            torch.compile(fn),
             a,
         )
         FileCheck().check(
             "assert_size_stride(buf2, (16, 32), (32, 1), 'torch.ops.test.foo.default')"
         ).run(code[0])
-        
+
     @config.patch(implicit_fallbacks=True)
     def test_generated_code_has_alignment_assert(self):
         def foo(x):
@@ -11922,7 +11922,7 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         a = torch.randn((16, 32))
 
         _, code = run_and_get_code(
-            torch.compile(fn), 
+            torch.compile(fn),
             a,
         )
         FileCheck().check(
@@ -11946,7 +11946,7 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         tensor = torch.empty((16, 32))
         with self.assertRaisesRegex(AssertionError, "torch.ops.dummy.op_name"):
             assert_alignment(tensor, 0, "torch.ops.dummy.op_name")
-                    
+
     @torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True)
     @torch._inductor.config.patch(implicit_fallbacks=True)
     def test_custom_op_unbacked_symints(self):
