@@ -3359,6 +3359,40 @@ class AOTInductorTestsTemplate:
         m = M()
         self.check_model(m, example_args, dynamic_shapes=dynamic_shapes)
 
+    def test_grid_sampler_2d_dynamic(self):
+        class M(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+
+            def forward(self, input: torch.Tensor, grid: torch.Tensor) -> torch.Tensor:
+                return torch.grid_sampler_2d(input, grid, 0, 0, False)
+            
+        example_args = (
+            torch.randn(3, 3, 4, 5, device=self.device),
+            torch.randn(3, 4, 5, 2, device=self.device),
+        )
+        batch_dim = Dim("batch_dim", max=100)
+        channel_dim = Dim("channel_dim", max=7)
+        x_dim = Dim("x_dim", max=40)
+        y_dim = Dim("y_dim", max=40)
+        dynamic_shapes = {
+            "input": {
+                0: batch_dim,
+                1: channel_dim,
+                2: x_dim,
+                3: y_dim,
+            },
+            "grid": {
+                0: batch_dim,
+                1: x_dim,
+                2: y_dim,
+                3: 2,
+            },
+        }
+
+        m = M()
+        self.check_model(m, example_args, dynamic_shapes=dynamic_shapes)
+
     def test_fqn(self):
         class NestedChild(torch.nn.Module):
             def __init__(self) -> None:
