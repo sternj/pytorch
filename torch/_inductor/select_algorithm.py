@@ -29,6 +29,7 @@ import torch._inductor.async_compile  # noqa: F401 required to warm up AsyncComp
 from torch._dynamo.device_interface import get_interface_for_device
 from torch._dynamo.testing import rand_strided
 from torch._dynamo.utils import counters, dynamo_timed, identity, preserve_rng_state
+from torch._inductor.codegen.cuda.cuda_kernel import CUDATemplateCaller
 from torch._inductor.utils import clear_on_fresh_inductor_cache
 from torch.utils._filelock import FileLock
 from torch.utils._ordered_set import OrderedSet
@@ -1834,8 +1835,6 @@ class AlgorithmSelectorCache(PersistentCache):
         precompilation_timeout_seconds: int = 60 * 60,
         return_multi_template=False,
     ):
-        from .codegen.cuda.cuda_kernel import CUDATemplateCaller
-
         # Templates selected with input_gen_fns require specific input data to avoid IMA
         # Passing custom input gen fns to benchmark_fusion NYI, so skip deferred template selection
         # TODO(jgong5): support multi-template on CPU
@@ -2141,10 +2140,6 @@ class AlgorithmSelectorCache(PersistentCache):
                 timeout=precompilation_timeout_seconds,
             ):
                 if e := future.exception():
-                    from torch._inductor.codegen.cuda.cuda_kernel import (
-                        CUDATemplateCaller,
-                    )
-
                     if isinstance(e, CUDACompileError) and isinstance(
                         futures[future], CUDATemplateCaller
                     ):
@@ -2263,8 +2258,6 @@ class AlgorithmSelectorCache(PersistentCache):
             try:
                 timing = cls.benchmark_choice(choice, autotune_args)
             except CUDACompileError as e:
-                from torch._inductor.codegen.cuda.cuda_kernel import CUDATemplateCaller
-
                 if not isinstance(choice, CUDATemplateCaller):
                     log.error(
                         "CUDA compilation error during autotuning: \n%s. \nIgnoring this choice.",
@@ -2275,8 +2268,6 @@ class AlgorithmSelectorCache(PersistentCache):
                 log.warning("Not yet implemented: %s", e)
                 timing = float("inf")
             except RuntimeError as e:
-                from torch._inductor.codegen.cuda.cuda_kernel import CUDATemplateCaller
-
                 msg = str(e)
                 if "invalid argument" in msg:
                     msg += "\n\nThis may mean this GPU is too small for max_autotune mode.\n\n"
