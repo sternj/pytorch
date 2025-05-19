@@ -47,6 +47,7 @@ from ._aot_autograd.autograd_cache import (  # noqa: F401
 )
 from ._aot_autograd.collect_metadata_analysis import (  # noqa: F401
     run_functionalized_fw_and_collect_metadata,
+    collect_metadata_from_dynamo_fx
 )
 from ._aot_autograd.functional_utils import (  # noqa: F401
     _check_if_mutation_can_be_in_graph,
@@ -571,10 +572,11 @@ def create_aot_dispatcher_function(
     aot_config: AOTConfig,
     fake_mode: FakeTensorMode,
     shape_env: Optional[ShapeEnv],
+    gm: Optional[torch.fx.GraphModule] = None,
 ) -> tuple[Callable, ViewAndMutationMeta]:
     with dynamo_timed("create_aot_dispatcher_function", log_pt2_compile_event=True):
         return _create_aot_dispatcher_function(
-            flat_fn, fake_flat_args, aot_config, fake_mode, shape_env
+            flat_fn, fake_flat_args, aot_config, fake_mode, shape_env, gm
         )
 
 
@@ -584,6 +586,7 @@ def _create_aot_dispatcher_function(
     aot_config: AOTConfig,
     fake_mode: FakeTensorMode,
     shape_env: Optional[ShapeEnv],
+    gm: Optional[torch.fx.GraphModule],
 ) -> tuple[Callable, ViewAndMutationMeta]:
     """
     Traces the forward and backward graphs of the attr:`flat_fn` to generate a
@@ -682,8 +685,17 @@ def _create_aot_dispatcher_function(
                     dynamo_timed_ctx = dynamo_timed(
                         "aot_collect_metadata", log_pt2_compile_event=True
                     )
-
                 with dynamo_timed_ctx, ctx:
+                    import pdb
+                    pdb.set_trace()
+                    # NOTE: This is the right place to do this
+                    fw_metadata_2 = collect_metadata_from_dynamo_fx(
+                        gm,
+                        keep_input_mutations=aot_config.keep_inference_input_mutations,
+                        static_input_indices=aot_config.static_input_indices,
+                        is_train=needs_autograd,
+                        is_export=aot_config.is_export,
+                    )(*_dup_fake_script_obj(fake_flat_args))
                     fw_metadata = run_functionalized_fw_and_collect_metadata(
                         flat_fn,
                         static_input_indices=aot_config.static_input_indices,
@@ -692,7 +704,7 @@ def _create_aot_dispatcher_function(
                         pre_dispatch=aot_config.pre_dispatch,
                         is_export=aot_config.is_export,
                     )(*_dup_fake_script_obj(fake_flat_args))
-
+                    assert fw_metadata_2 == fw_metadata
                 req_subclass_dispatch = requires_subclass_dispatch(
                     fake_flat_args, fw_metadata
                 )
@@ -1171,12 +1183,15 @@ def aot_module_simplified(
     def dispatch_and_compile():
         functional_call = create_functional_call(mod, params_spec, params_len)
         with compiled_autograd._disable():
+            # TODO: Modify to pass original GM into this as well
+
             compiled_fn, _ = create_aot_dispatcher_function(
                 functional_call,
                 fake_flat_args,
                 aot_config,
                 fake_mode,
                 shape_env,
+                mod,
             )
         return compiled_fn
 

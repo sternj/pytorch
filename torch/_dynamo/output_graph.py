@@ -1259,7 +1259,7 @@ class OutputGraph(OutputGraphGuardsState):
 
             stored_graph_output_var = False
             output = []
-            if count_calls(self.graph) != 0 or len(pass2.graph_outputs) != 0:
+            if count_calls(self.graph) != 0 or len(pass2.graph_outputs) != 0:                
                 output.extend(
                     self.compile_and_call_fx_graph(tx, pass2.graph_output_vars(), root)
                 )
