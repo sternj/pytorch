@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.optim
 import torch.utils.data
 from torch._C._profiler import _ExperimentalConfig, _ExtraFields_PyCall
+from torch._inductor.utils import is_big_gpu
 from torch.autograd.profiler import KinetoStepTracker, profile as _profile
 from torch.autograd.profiler_legacy import profile as _profile_legacy
 from torch.profiler import (
@@ -70,7 +71,6 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TestCase,
 )
-from torch._inductor.utils import is_big_gpu
 
 
 if TYPE_CHECKING:
@@ -2998,7 +2998,8 @@ aten::mm""",
             validate_json(prof)
 
     @unittest.skipIf(
-        torch.cuda.is_available() and not is_big_gpu(), "we can't use Triton only as a backend for max autotune"
+        not torch.cuda.is_available() and not is_big_gpu(),
+        "we can't use Triton only as a backend for max autotune",
     )
     def test_profiler_debug_autotuner(self):
         """
