@@ -2123,6 +2123,8 @@ def get_device_tflops(dtype: torch.dtype) -> float:
 
     from triton.testing import get_max_simd_tflops, get_max_tensorcore_tflops
 
+    from torch.testing._internal.common_cuda import SM80OrLater
+
     assert dtype in (torch.float16, torch.bfloat16, torch.float32)
 
     if inspect.signature(get_max_simd_tflops).parameters.get("clock_rate"):
@@ -2130,7 +2132,7 @@ def get_device_tflops(dtype: torch.dtype) -> float:
         from torch._utils_internal import max_clock_rate_mhz
 
         sm_clock = max_clock_rate_mhz()
-        if dtype in (torch.float16, torch.bfloat16):
+        if dtype in (torch.float16, torch.bfloat16) and SM80OrLater:
             return get_max_tensorcore_tflops(dtype, sm_clock)
 
         if torch.backends.cuda.matmul.allow_tf32:
@@ -2138,7 +2140,7 @@ def get_device_tflops(dtype: torch.dtype) -> float:
         else:
             return get_max_simd_tflops(torch.float32, sm_clock)
     else:
-        if dtype in (torch.float16, torch.bfloat16):
+        if dtype in (torch.float16, torch.bfloat16) and SM80OrLater:
             return get_max_tensorcore_tflops(dtype)
 
         if torch.backends.cuda.matmul.allow_tf32:

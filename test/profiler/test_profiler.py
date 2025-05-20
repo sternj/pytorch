@@ -2997,8 +2997,9 @@ aten::mm""",
             assert "Overload Name" in key_averages.table()
             validate_json(prof)
 
+    @unittest.skipIf(not torch.cuda.is_available(), "requries CUDA")
     @unittest.skipIf(
-        not torch.cuda.is_available() and not is_big_gpu(),
+        not is_big_gpu(),
         "we can't use Triton only as a backend for max autotune",
     )
     def test_profiler_debug_autotuner(self):
