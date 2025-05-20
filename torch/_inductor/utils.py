@@ -51,6 +51,7 @@ from unittest import mock
 import sympy
 
 import torch
+from torch._inductor.analysis.device_info import datasheet_tops
 from torch._inductor.runtime.hints import DeviceProperties
 from torch.utils._ordered_set import OrderedSet
 from torch.utils._pytree import tree_map_only
@@ -2104,16 +2105,24 @@ def get_backend_num_stages() -> int:
 
 
 @functools.lru_cache(None)
-def get_device_tflops(dtype: torch.dtype) -> int:
+def get_device_tflops(dtype: torch.dtype) -> float:
+    """
+    We don't want to throw errors in this function. First check to see if the device is in device_info.py,
+    then fall back to the inaccurate triton estimation.
+    """
+    ds_tops = datasheet_tops(dtype)
+    if ds_tops is not None:
+        return ds_tops
+
     from triton.testing import get_max_simd_tflops, get_max_tensorcore_tflops
 
     assert dtype in (torch.float16, torch.bfloat16, torch.float32)
 
     if inspect.signature(get_max_simd_tflops).parameters.get("clock_rate"):
         # Triton API change in https://github.com/triton-lang/triton/pull/2293
-        from torch._utils_internal import max_clock_rate
+        from torch._utils_internal import max_clock_rate_mhz
 
-        sm_clock = max_clock_rate()
+        sm_clock = max_clock_rate_mhz()
         if dtype in (torch.float16, torch.bfloat16):
             return get_max_tensorcore_tflops(dtype, sm_clock)
 
