@@ -1264,7 +1264,6 @@ class DeviceCachingAllocator {
         || (trigger_free_memory_callbacks(params) && get_free_block(params));
 
     // Can't reuse an existing block; try to get a new one.
-    MempoolId_t mempool_id = pool.owner_MempoolId();
     if (!block_found) {
       // Do garbage collection if the flag is set.
       if (C10_UNLIKELY(
@@ -1284,14 +1283,13 @@ class DeviceCachingAllocator {
               alloc_block(params, false, context, lock))
           // Free all non-split cached blocks and retry alloc.
           || (C10_LIKELY(captures_underway.empty()) &&
-              release_cached_blocks(context, mempool_id) &&
+              release_cached_blocks(context, {0, 0}) &&
               alloc_block(params, true, context, lock));
     }
 
     // we are about to oom, try to use existing mempools as a last resort
     if (!block_found && params.err == cudaErrorMemoryAllocation) {
       // if already trying to use a mempool, then just oom
-      //auto active_pool = MemPoolContext::getActiveMemPool();
       bool active_pool = params.pool->owner_PrivatePool && params.pool->owner_PrivatePool->allocator();
       if (!active_pool) {
         for (MempoolId_t mempool_id : use_on_oom_pools) {
@@ -2004,12 +2002,6 @@ class DeviceCachingAllocator {
     std::lock_guard<std::recursive_mutex> lock(mutex);
 
     std::vector<Block*> all_blocks;
-    //MempoolId_t mempool_id = {0, 0};
-
-    // auto active_mempool = MemPoolContext::getActiveMemPool();
-    // if (active_mempool) {
-    //   mempool_id = active_mempool->id();
-    // }
 
     if (mempool_id.first != 0 || mempool_id.second != 0) {
       // If there is an active mempool, we find the corresponding PrivatePool
@@ -2019,7 +2011,7 @@ class DeviceCachingAllocator {
         all_blocks = get_private_pool_head_blocks(pool->second.get());
       }
     } else {
-      // When snapshot is called outside a MemPoolContext, we return
+      // When snapshot is called with non-default mempool_id, we return
       // all the blocks in the CUDACachingAllocator (as returned by
       // get_all_blocks).
       all_blocks = get_all_blocks();
@@ -2789,7 +2781,6 @@ class DeviceCachingAllocator {
     bool in_fbcode = false;
 #endif
 
-    //auto active_pool = MemPoolContext::getActiveMemPool();
     bool active_pool = p.pool->owner_PrivatePool && p.pool->owner_PrivatePool->allocator();
     if (set_fraction &&
         total_allocated_memory + size > allowed_memory_maximum) {
@@ -2815,12 +2806,6 @@ class DeviceCachingAllocator {
       }
       return bool(p.block);
     } else {
-      // if (active_pool && active_pool->allocator() &&
-      //     p.pool->owner_PrivatePool) {
-      //   // Ensure that active_pool and p.pool are the same
-      //   auto pp = get_private_pool(active_pool->id());
-      //   TORCH_INTERNAL_ASSERT(pp == p.pool->owner_PrivatePool);
-      // }
       if (CUDAAllocatorConfig::release_lock_on_cudamalloc()) {
         // At scope exit, acquire the lock again. This provides safety against
         // any potential exceptions in the cudaMallocMaybeCapturing function.
@@ -2941,11 +2926,6 @@ class DeviceCachingAllocator {
   }
 
   bool release_cached_blocks(const std::shared_ptr<GatheredContext>& context, MempoolId_t mempool_id) {
-    //MempoolId_t mempool_id = {0, 0};
-    // auto active_mempool = MemPoolContext::getActiveMemPool();
-    // if (active_mempool) {
-    //   mempool_id = active_mempool->id();
-    // }
 
     if (mempool_id.first == 0 && mempool_id.second == 0) {
       // If there is no active mempool, we work on releasing *all* blocks.
@@ -3019,13 +2999,7 @@ class DeviceCachingAllocator {
         context ? context : block->context_when_segment_allocated);
 
     auto* pool = block->pool;
-    //auto active_pool = MemPoolContext::getActiveMemPool();
     if (pool->owner_PrivatePool && pool->owner_PrivatePool->allocator()) {
-    //if (active_pool && active_pool->allocator() && pool->owner_PrivatePool) {
-      // Ensure that active_pool and pool are the same
-      //auto pp = get_private_pool(active_pool->id());
-      //TORCH_INTERNAL_ASSERT(pp == pool->owner_PrivatePool);
-
       // If there is an active mempool with a given allocator,
       // we use the given allocator's delete function.
       pool->owner_PrivatePool->allocator()->raw_delete((void*)block->ptr);
@@ -4161,7 +4135,6 @@ MemPool::MemPool(
 MemPool::~MemPool() {
   TORCH_INTERNAL_ASSERT(use_count() == 1);
   CUDACachingAllocator::releasePool(device_, id_);
-  //auto ctx = MemPoolContext(this);
   c10::cuda::CUDACachingAllocator::emptyCache(id_);
 }
 
@@ -4186,25 +4159,6 @@ MempoolId_t MemPool::graph_pool_handle(bool is_user_created) {
     return {0, uid_++};
   }
   return {uuid_++, 0};
-}
-
-// Note that active_mempool_ is a global variable here
-// and not inside MemPoolContext class, because in windows we
-// can't use __declspec(dllexport) and __declspec(thread)
-// together: https://stackoverflow.com/a/50967977
-static thread_local MemPool* active_mempool_ = nullptr;
-
-MemPoolContext::MemPoolContext(MemPool* mempool)
-    : prev_mempool_(active_mempool_) {
-  active_mempool_ = mempool;
-}
-
-MemPoolContext::~MemPoolContext() {
-  active_mempool_ = prev_mempool_;
-}
-
-MemPool* MemPoolContext::getActiveMemPool() {
-  return active_mempool_;
 }
 
 } // namespace c10::cuda

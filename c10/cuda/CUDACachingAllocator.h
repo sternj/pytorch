@@ -563,26 +563,4 @@ struct C10_CUDA_API MemPool {
   c10::DeviceIndex device_;
 };
 
-// MemPoolContext holds the currently active pool and stashes the previous
-// pool. On deletion it makes the previous pool active.
-struct C10_CUDA_API MemPoolContext {
-  MemPoolContext(MemPool* mempool);
-
-  ~MemPoolContext();
-
-  // getActiveMemPool() can be used to get the currently active pool.
-  // For instance: in CUDACachingAllocator, we can route allocations
-  // to a user provided allocator, by doing:
-  //
-  //  auto active_pool = MemPoolContext::getActiveMemPool();
-  //  if (active_pool && active_pool->allocator()) {
-  //    ptr = active_pool->allocator()->raw_alloc(size);
-  //  }
-  //
-  static MemPool* getActiveMemPool();
-
- private:
-  MemPool* prev_mempool_;
-};
-
 } // namespace c10::cuda

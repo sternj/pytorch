@@ -5569,7 +5569,7 @@ at::Tensor ProcessGroupNCCL::allocateTensor(
   }
 
   // Allocate tensor under this MemPool's context
-  auto ctx = c10::cuda::MemPoolContext(memPool_.get());
+  //auto ctx = c10::cuda::MemPoolContext(memPool_.get());
   c10::cuda::CUDACachingAllocator::beginAllocateToPool(
       memPool_->device(), memPool_->id(), [](cudaStream_t) { return true; });
   at::Tensor tensor = at::empty({size}, options);

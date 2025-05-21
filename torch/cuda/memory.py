@@ -60,7 +60,6 @@ __all__ = [
     "CUDAPluggableAllocator",
     "change_current_allocator",
     "MemPool",
-    "MemPoolContext",
     "use_mem_pool",
 ]
 
@@ -73,7 +72,6 @@ if not hasattr(torch._C, "_cuda_CUDAAllocator"):
 if not hasattr(torch._C, "_MemPool"):
     # Define dummy base classes
     torch._C.__dict__["_MemPool"] = _dummy_type("_MemPool")
-    torch._C.__dict__["_MemPoolContext"] = _dummy_type("_MemPoolContext")
     torch._C.__dict__["_cuda_beginAllocateToPool"] = _dummy_type(
         "_cuda_beginAllocateToPool"
     )
@@ -92,7 +90,6 @@ from torch._C import (  # noqa: F401
     _cuda_endAllocateToPool,
     _cuda_releasePool,
     _MemPool,
-    _MemPoolContext,
 )
 
 
@@ -1110,25 +1107,6 @@ def _get_current_allocator() -> _CUDAAllocator:
     return _CUDAAllocator(torch._C._cuda_getAllocator())
 
 
-class MemPoolContext(_MemPoolContext):
-    r"""MemPoolContext holds the currently active pool and stashes the previous
-    pool. On deletion it makes the previous pool active.
-
-    Args:
-        pool(torch.cuda.MemPool): a MemPool object to be made active so that
-        allocations route to this pool.
-
-    """
-
-    def __init__(self, pool: _MemPool):
-        super().__init__(pool)
-
-    @staticmethod
-    def active_pool() -> Optional[_MemPool]:
-        r"""Returns the active MemPool"""
-        return _MemPoolContext.active_pool()
-
-
 class MemPool(_MemPool):
     r"""MemPool represents a pool of memory in a caching allocator. Currently,
     it's just the ID of the pool object maintained in the CUDACachingAllocator.
@@ -1177,11 +1155,8 @@ class MemPool(_MemPool):
             See :ref:`cuda-memory-management` for more details about GPU memory
             management.
         """
-        try:
-            ctx = MemPoolContext(self)
-            snapshot = torch.cuda.memory_snapshot()
-        finally:
-            del ctx
+        # TODO fix snapshot to return this pool only
+        snapshot = torch.cuda.memory_snapshot()
         return snapshot
 
 
@@ -1202,7 +1177,6 @@ def use_mem_pool(pool: MemPool, device: "Device" = None):
         (e.g. by calling backward) the allocations in that thread will not
         route to the given pool.
     """
-    ctx = MemPoolContext(pool)
     device_index = (
         torch.cuda.current_device() if device is None else _get_device_index(device)
     )
@@ -1212,4 +1186,3 @@ def use_mem_pool(pool: MemPool, device: "Device" = None):
     finally:
         _cuda_endAllocateToPool(device_index, pool.id)
         _cuda_releasePool(device_index, pool.id)
-        del ctx
