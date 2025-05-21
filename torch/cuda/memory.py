@@ -1155,7 +1155,6 @@ class MemPool(_MemPool):
             See :ref:`cuda-memory-management` for more details about GPU memory
             management.
         """
-        # TODO fix snapshot to return this pool only
         snapshot = torch.cuda.memory_snapshot(self.id)
         return snapshot
 

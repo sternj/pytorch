@@ -114,7 +114,7 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
   bool initialized() override;
   double getMemoryFraction(c10::DeviceIndex device) override;
   void setMemoryFraction(double fraction, c10::DeviceIndex device) override;
-  void emptyCache(c10::cuda::MempoolId_t) override;
+  void emptyCache(c10::cuda::MempoolId_t mempool_id = {0, 0}) override;
   void enable(bool) override {}
   bool isEnabled() const override {
     return true;
