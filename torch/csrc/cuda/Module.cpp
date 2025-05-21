@@ -728,18 +728,17 @@ PyObject* THCPModule_memorySnapshot(PyObject* _unused, PyObject* arg) {
     TORCH_CHECK(PyTuple_Check(arg), "mempool_id must be a tuple");
     Py_ssize_t size = PyTuple_Size(arg);
     TORCH_CHECK(size == 2, "mempool_id must be a tuple of 2 integers");
-    
-    PyObject* id1 = PyTuple_GetItem(arg, 0);
-    PyObject* id2 = PyTuple_GetItem(arg, 1);
-    TORCH_CHECK(THPUtils_checkLong(id1) && THPUtils_checkLong(id2), 
-                "mempool_id elements must be integers");
-    
-    mempool_id = c10::cuda::MempoolId_t(
-      static_cast<int64_t>(THPUtils_unpackLong(id1)),
-      static_cast<int64_t>(THPUtils_unpackLong(id2))
-    );
-  }
 
+    auto id1 = THPObjectPtr(PyTuple_GetItem(arg, 0));
+    auto id2 = THPObjectPtr(PyTuple_GetItem(arg, 1));
+    TORCH_CHECK(
+        THPUtils_checkLong(id1) && THPUtils_checkLong(id2),
+        "mempool_id elements must be integers");
+
+    mempool_id = c10::cuda::MempoolId_t(
+        static_cast<int64_t>(THPUtils_unpackLong(id1)),
+        static_cast<int64_t>(THPUtils_unpackLong(id2)));
+  }
 
   using c10::cuda::CUDACachingAllocator::BlockInfo;
   using c10::cuda::CUDACachingAllocator::SegmentInfo;

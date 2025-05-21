@@ -128,7 +128,8 @@ struct TORCH_CUDA_CPP_API CUDAPluggableAllocator
       c10::DeviceIndex device) override;
   void resetAccumulatedStats(c10::DeviceIndex device) override;
   void resetPeakStats(c10::DeviceIndex device) override;
-  c10::cuda::CUDACachingAllocator::SnapshotInfo snapshot(c10::cuda::MempoolId_t mempool) override;
+  c10::cuda::CUDACachingAllocator::SnapshotInfo snapshot(
+      c10::cuda::MempoolId_t mempool) override;
   void beginAllocateToPool(
       c10::DeviceIndex device,
       c10::cuda::MempoolId_t mempool_id,
