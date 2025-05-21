@@ -2013,6 +2013,11 @@ _post_grad_graph_counter = itertools.count()
 
 
 class Scheduler:
+    """
+    A Scheduler is a graph of BaseSchedulerNode's. It is responsible for
+    optimizations such as fusion, reorder, and graph partition.
+    """
+
     __dep_size_hint_cache: dict[Dep, int]
 
     def __init__(self, nodes: list[ir.Operation]) -> None:
@@ -4044,10 +4049,38 @@ class Scheduler:
 
     def should_partition(self, node: BaseSchedulerNode) -> bool:
         """Return True if we should partition the inductor graph on this node"""
+
+        def is_non_gpu_tensor_box(buf: Any) -> bool:
+            if isinstance(buf, ir.TensorBox) and not is_gpu(str(buf.get_device())):
+                return True
+
+            return False
+
+        def read_write_non_gpu_data(node: BaseSchedulerNode) -> bool:
+            for dep in node.read_writes.reads | node.read_writes.writes:
+                name = dep.name
+                if (
+                    inp := V.graph.graph_inputs.get(name, None)
+                ) and is_non_gpu_tensor_box(inp):
+                    return True
+                elif (
+                    buf := self.name_to_buf.get(name, None)
+                ) and is_non_gpu_tensor_box(buf):
+                    return True
+                else:
+                    raise RuntimeError(
+                        f"scheduler node should only depend on graph inputs and buffers but found {node}"
+                    )
+
+            return False
+
         if isinstance(node, FusedSchedulerNode):
             return any(self.should_partition(snode) for snode in node.snodes)
 
         if not node.is_gpu():
+            return True
+
+        if read_write_non_gpu_data(node):
             return True
 
         if node.node is None:
