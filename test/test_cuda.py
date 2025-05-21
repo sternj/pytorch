@@ -5140,6 +5140,8 @@ class TestMemPool(TestCase):
         # out tensor
         self.assertEqual(called_dummy_alloc.value, 123)
 
+        out_non_pool = torch.empty(nelem_1mb, device="cuda")
+
         with torch.cuda.use_mem_pool(pool):
             # pool should have 1 segment since we made a small allocation (1 MB)
             # above and so the CUDACachingAllocator packed it into a 2 MB buffer
@@ -5156,6 +5158,9 @@ class TestMemPool(TestCase):
             # pool now should have 2 segments since the CUDACachingAllocator had
             # to make a new 2 MB buffer to accomodate out_2
             self.assertEqual(len(pool.snapshot()), 2)
+
+        all_segments = torch.cuda.memory._snapshot()["segments"]
+        self.assertEqual(len(all_segments), 3)
 
         del out_0, out_1, out_2
 

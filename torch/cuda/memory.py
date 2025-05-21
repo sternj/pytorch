@@ -614,7 +614,7 @@ def max_memory_cached(device: "Device" = None) -> int:
     return max_memory_reserved(device=device)
 
 
-def memory_snapshot():
+def memory_snapshot(mempool_id=None):
     r"""Return a snapshot of the CUDA memory allocator state across all devices.
 
     Interpreting the output of this function requires familiarity with the
@@ -624,7 +624,7 @@ def memory_snapshot():
         See :ref:`cuda-memory-management` for more details about GPU memory
         management.
     """
-    return torch._C._cuda_memorySnapshot()["segments"]
+    return torch._C._cuda_memorySnapshot(mempool_id)["segments"]
 
 
 def memory_summary(device: "Device" = None, abbreviated: bool = False) -> str:
@@ -995,7 +995,7 @@ def _snapshot(device: "Device" = None):
     Returns:
         The Snapshot dictionary object
     """
-    return _C._cuda_memorySnapshot()
+    return _C._cuda_memorySnapshot(None)
 
 
 def _dump_snapshot(filename="dump_snapshot.pickle"):
@@ -1156,7 +1156,7 @@ class MemPool(_MemPool):
             management.
         """
         # TODO fix snapshot to return this pool only
-        snapshot = torch.cuda.memory_snapshot()
+        snapshot = torch.cuda.memory_snapshot(self.id)
         return snapshot
 
 
