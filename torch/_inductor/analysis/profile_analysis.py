@@ -125,6 +125,9 @@ def mm_adapter(
 
 
 def _parse_kernel_name(name: str) -> Optional[str]:
+    """
+    parse the name of the kernel from the event name.
+    """
     if name.startswith(ATEN_PREFIX):
         return name[len(ATEN_PREFIX) :]
     elif "convolution" in name:
@@ -169,23 +172,95 @@ def _calculate_flops(event: dict[str, Any]) -> int:
         args, kwargs = default_adapter(input_shapes, concrete)
     return flop_function(*args, **kwargs)
 
+def _get_size_from_string(type_string: str) -> int:
+    if not hasattr(torch, type_string):
+        return 1
+    else:
+        return getattr(torch, type_string).itemsize
 
-def _estimate_gb(event: dict[str, Any]) -> float:
-    """
-    This estimate isn't the best because it doesn't know if two input buffers are the same buffer, leading to an
-    overestimate of the real achieved bandwidth.
-    """
-    if "Input type" not in event["args"] or "Input Dims" not in event["args"]:
-        return 0
+
+def _default_estimate_gb(event: dict[str, Any]) -> float:
     sizes_and_types = zip(event["args"]["Input Dims"], event["args"]["Input type"])
     bw = 0
     for size, typ in sizes_and_types:
-        if not hasattr(torch, typ):
-            isize = 0
-        else:
-            isize = getattr(torch, typ).itemsize
+        isize = _get_size_from_string(typ)
         bw += isize * math.prod(pytree.tree_flatten(size)[0])
     return bw / 1e9
+
+def _estimate_gb(event: dict[str, Any]) -> float:
+    """
+    Our best effort to estimate the gb, should be refactored soon with MemoryCounter.
+    """
+    name = event["name"]
+    if "kernel_num_gb" in event["args"] and event["args"]["kernel_num_gb"] != 0:
+        return event["args"]["kernel_num_gb"]
+    if "Input type" not in event["args"] or "Input Dims" not in event["args"]:
+        return 0
+    op_name = _parse_kernel_name(name)
+    if op_name is None:
+        return _default_estimate_gb(event)
+
+    op_obj = getattr(torch.ops.aten, op_name, None)
+    if op_obj is None:
+        return _default_estimate_gb(event)
+
+
+    assert "Input Dims" in event["args"] and "Concrete Inputs" in event["args"]
+    input_shapes = event["args"]["Input Dims"]
+    # NOTE these will be refactored into a similar object to FlopCounter soon^tm
+    def mm_formula(M, N, K, size):
+        return 2 * (M * K + N * K + M * N) * size
+
+
+    if op_name == 'addmm':
+        add_in_size = math.prod(pytree.tree_flatten(input_shapes[0])[0])
+        add_type_size = _get_size_from_string(event["args"]["Input type"][0])
+        M = input_shapes[1][0]
+        N = input_shapes[1][1]
+        assert input_shapes[1][1] == input_shapes[2][0]
+        K = input_shapes[2][1]
+        mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
+        return (mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
+    elif op_name == 'mm':
+        M = input_shapes[0][0]
+        N = input_shapes[0][1]
+        assert input_shapes[0][1] == input_shapes[1][0]
+        K = input_shapes[1][1]
+        type_size = _get_size_from_string(event["args"]["Input type"][0])
+        return mm_formula(M, N, K, type_size) / 1e9
+    elif op_name == 'baddbmm':
+        add_in_size = math.prod(pytree.tree_flatten(input_shapes[0])[0])
+        add_type_size = _get_size_from_string(event["args"]["Input type"][0])
+        B = input_shapes[0][0]
+        M = input_shapes[1][1]
+        N = input_shapes[1][2]
+        K = input_shapes[2][2]
+        mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
+        return (B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
+    elif op_name in ["convolution", "_convolution", "cudnn_convolution"]:
+        concrete = event["args"]["Concrete Inputs"]
+        def conv_out_dim(x: int, kernel: int, stride: int) -> int:
+            return (x - kernel) // stride + 1
+        stride = parse_list(concrete[3])
+        inp = input_shapes[0]
+        w = input_shapes[1]
+        out_x_y = [conv_out_dim(*args) for args in zip(inp[2:], w[2:], stride)]
+        out = [inp[0], w[0]] + out_x_y  # we only need the xy values
+        # each output element reads in * w * w chunk
+        input_reads = out[0] * out[1] * out[2] * out[3] * inp[1] * w[2] * w[3]
+        # Assume weights are in cache, so only read once
+        weight_reads = w[0] * w[1] * w[2] * w[3]
+        return (input_reads + weight_reads) / 1e9
+
+        
+    
+    print(op_name)
+    if op_name not in ["copy_", "random_", "fill_", "normal_", "uniform_", "randn_", "rand_", "randperm_", "bernoulli_", "bernoulli_"]:
+        breakpoint()
+    return _default_estimate_gb(event)
+
+
+
 
 
 def _create_extern_mapping(
