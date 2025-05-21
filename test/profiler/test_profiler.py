@@ -2998,14 +2998,12 @@ aten::mm""",
             validate_json(prof)
 
     @unittest.skipIf(not torch.cuda.is_available(), "requries CUDA")
-    @unittest.skipIf(
-        not is_big_gpu(),
-        "we can't use Triton only as a backend for max autotune",
-    )
     def test_profiler_debug_autotuner(self):
         """
         This test makes sure that profiling events will be present when the kernel is run using the DebugAutotuner.
         """
+        if not is_big_gpu():
+            raise unittest.SkipTest("requires large gpu to max-autotune")
         in1 = torch.randn((256, 512), device="cuda", dtype=torch.float16)
         in2 = torch.randn((512, 768), device="cuda", dtype=torch.float16)
 
