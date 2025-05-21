@@ -2137,12 +2137,10 @@ class DeviceCachingAllocator {
     create_or_incref_pool(mempool_id, allocator);
   }
 
-  void setUseOnOOM(bool use_on_oom, MempoolId_t mempool_id) {
+  void setUseOnOOM(MempoolId_t mempool_id) {
     // Choose if this pool should be used as a last resort before ooming
     std::lock_guard<std::recursive_mutex> lock(mutex);
-    if (use_on_oom) {
-      use_on_oom_pools.insert(mempool_id);
-    }
+    use_on_oom_pools.insert(mempool_id);
   }
 
   // See Note [Interaction with CUDA graph capture]
@@ -3785,12 +3783,9 @@ class NativeCachingAllocator : public CUDAAllocator {
         std::move(mempool_id), allocator);
   }
 
-  void setUseOnOOM(
-      c10::DeviceIndex device,
-      bool use_on_oom,
-      MempoolId_t mempool_id) override {
+  void setUseOnOOM(c10::DeviceIndex device, MempoolId_t mempool_id) override {
     assertValidDevice(device);
-    device_allocator[device]->setUseOnOOM(use_on_oom, std::move(mempool_id));
+    device_allocator[device]->setUseOnOOM(std::move(mempool_id));
   }
 
   // CUDAGraph interactions
@@ -4131,7 +4126,9 @@ MemPool::MemPool(
   }
   device_ = c10::cuda::current_device();
   CUDACachingAllocator::createOrIncrefPool(device_, id_, allocator);
-  CUDACachingAllocator::setUseOnOOM(device_, use_on_oom, id_);
+  if (use_on_oom) {
+    CUDACachingAllocator::setUseOnOOM(device_, id_);
+  }
 }
 
 MemPool::~MemPool() {

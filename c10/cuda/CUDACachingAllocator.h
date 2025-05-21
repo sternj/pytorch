@@ -249,10 +249,7 @@ class CUDAAllocator : public Allocator {
         " does not yet support createOrIncrefPool. "
         "If you need it, please file an issue describing your use case.");
   }
-  virtual void setUseOnOOM(
-      c10::DeviceIndex device,
-      bool use_on_oom,
-      MempoolId_t mempool_id) {
+  virtual void setUseOnOOM(c10::DeviceIndex device, MempoolId_t mempool_id) {
     TORCH_CHECK(
         false,
         name(),
@@ -485,11 +482,8 @@ inline void createOrIncrefPool(
     CUDAAllocator* allocator = nullptr) {
   get()->createOrIncrefPool(device, mempool_id, allocator);
 }
-inline void setUseOnOOM(
-    c10::DeviceIndex device,
-    bool use_on_oom,
-    MempoolId_t mempool_id) {
-  get()->setUseOnOOM(device, use_on_oom, mempool_id);
+inline void setUseOnOOM(c10::DeviceIndex device, MempoolId_t mempool_id) {
+  get()->setUseOnOOM(device, mempool_id);
 }
 
 inline int getPoolUseCount(c10::DeviceIndex device, MempoolId_t mempool_id) {
