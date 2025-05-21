@@ -1290,8 +1290,7 @@ class DeviceCachingAllocator {
     // we are about to oom, try to use existing mempools as a last resort
     if (!block_found && params.err == cudaErrorMemoryAllocation) {
       // if already trying to use a mempool, then just oom
-      bool active_pool = params.pool->owner_PrivatePool &&
-          params.pool->owner_PrivatePool->allocator();
+      bool active_pool = params.pool->owner_PrivatePool;
       if (!active_pool) {
         for (MempoolId_t mempool_id : use_on_oom_pools) {
           auto tid = std::this_thread::get_id();
