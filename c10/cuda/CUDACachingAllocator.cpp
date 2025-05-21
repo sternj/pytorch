@@ -859,11 +859,11 @@ struct PrivatePool {
   CUDAAllocator* allocator_;
   BlockPool large_blocks;
   BlockPool small_blocks;
-  public:
-    CUDAAllocator * allocator() {
-      return allocator_;
-    }
 
+ public:
+  CUDAAllocator* allocator() {
+    return allocator_;
+  }
 };
 
 MempoolId_t BlockPool::owner_MempoolId() const {
@@ -1290,7 +1290,8 @@ class DeviceCachingAllocator {
     // we are about to oom, try to use existing mempools as a last resort
     if (!block_found && params.err == cudaErrorMemoryAllocation) {
       // if already trying to use a mempool, then just oom
-      bool active_pool = params.pool->owner_PrivatePool && params.pool->owner_PrivatePool->allocator();
+      bool active_pool = params.pool->owner_PrivatePool &&
+          params.pool->owner_PrivatePool->allocator();
       if (!active_pool) {
         for (MempoolId_t mempool_id : use_on_oom_pools) {
           auto tid = std::this_thread::get_id();
@@ -2781,7 +2782,8 @@ class DeviceCachingAllocator {
     bool in_fbcode = false;
 #endif
 
-    bool active_pool = p.pool->owner_PrivatePool && p.pool->owner_PrivatePool->allocator();
+    bool active_pool =
+        p.pool->owner_PrivatePool && p.pool->owner_PrivatePool->allocator();
     if (set_fraction &&
         total_allocated_memory + size > allowed_memory_maximum) {
       p.err = cudaErrorMemoryAllocation;
@@ -2925,8 +2927,9 @@ class DeviceCachingAllocator {
     return true;
   }
 
-  bool release_cached_blocks(const std::shared_ptr<GatheredContext>& context, MempoolId_t mempool_id) {
-
+  bool release_cached_blocks(
+      const std::shared_ptr<GatheredContext>& context,
+      MempoolId_t mempool_id) {
     if (mempool_id.first == 0 && mempool_id.second == 0) {
       // If there is no active mempool, we work on releasing *all* blocks.
 

@@ -5036,7 +5036,6 @@ class TestMemPool(TestCase):
         # increments the id
         self.assertTrue(abs(pool2[1] - pool1[1]) > 0)
 
-    
     def get_dummy_allocator(self, check_vars):
         dummy_allocator_source_vars = """
         #include <torch/extension.h>
@@ -5085,7 +5084,9 @@ class TestMemPool(TestCase):
         dummy_allocator_libname = "dummy_allocator"
         dummy_allocator = load_inline(
             name=dummy_allocator_libname,
-            cpp_sources=dummy_allocator_source_vars if check_vars else dummy_allocator_source_no_vars,
+            cpp_sources=dummy_allocator_source_vars
+            if check_vars
+            else dummy_allocator_source_no_vars,
             is_python_module=False,
             keep_intermediates=False,
             verbose=True,
@@ -5097,7 +5098,6 @@ class TestMemPool(TestCase):
             "dummy_free",
         )
         return allocator, dummy_allocator
-
 
     def test_mempool_with_allocator(self):
         pool = torch.cuda.MemPool()
@@ -5168,7 +5168,6 @@ class TestMemPool(TestCase):
 
     @serialTest()
     def test_mempool_limited_memory_with_allocator(self):
-
         allocator, _ = self.get_dummy_allocator(check_vars=False)
         pool_do_not_use = torch.cuda.MemPool(allocator.allocator())
         pool_use = torch.cuda.MemPool(allocator.allocator(), use_on_oom=True)
@@ -5238,15 +5237,12 @@ class TestMemPool(TestCase):
 
         self._teardown_mempool_limited_memory_test()
 
-
     def test_mempool_multithread(self):
         pool_ids = []
-        #active_pool_ids = []
 
         def create_mempool_and_make_active():
             pool = torch.cuda.MemPool()
             pool_ids.extend([pool.id])
-
 
         num_threads = 4
         threads = [
@@ -5261,7 +5257,6 @@ class TestMemPool(TestCase):
         # each thread should create a unique mempool, since
         # mempool id creation is atomic
         self.assertEqual(len(set(pool_ids)), 4)
-
 
     @skipIfRocm(msg="expandable_segments mode is not supported on ROCm")
     def test_mempool_expandable(self):

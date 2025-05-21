@@ -211,7 +211,7 @@ class CUDAAllocator : public Allocator {
   virtual bool initialized() = 0;
   virtual double getMemoryFraction(c10::DeviceIndex device) = 0;
   virtual void setMemoryFraction(double fraction, c10::DeviceIndex device) = 0;
-  virtual void emptyCache(MempoolId_t mempool_id={0,0}) = 0;
+  virtual void emptyCache(MempoolId_t mempool_id = {0, 0}) = 0;
   virtual void enable(bool value) = 0;
   virtual bool isEnabled() const = 0;
   virtual void cacheInfo(c10::DeviceIndex device, size_t* largestBlock) = 0;
@@ -221,7 +221,7 @@ class CUDAAllocator : public Allocator {
       c10::DeviceIndex device) = 0;
   virtual void resetAccumulatedStats(c10::DeviceIndex device) = 0;
   virtual void resetPeakStats(c10::DeviceIndex device) = 0;
-  virtual SnapshotInfo snapshot(MempoolId_t mempool_id={0, 0}) = 0;
+  virtual SnapshotInfo snapshot(MempoolId_t mempool_id = {0, 0}) = 0;
   virtual void beginAllocateToPool(
       c10::DeviceIndex device,
       MempoolId_t mempool_id,
@@ -242,7 +242,7 @@ class CUDAAllocator : public Allocator {
   virtual void createOrIncrefPool(
       c10::DeviceIndex /*device*/,
       MempoolId_t /*mempool_id*/,
-      CUDAAllocator * allocator=nullptr) {
+      CUDAAllocator* allocator = nullptr) {
     TORCH_CHECK(
         false,
         name(),
@@ -368,7 +368,7 @@ inline void setMemoryFraction(double fraction, c10::DeviceIndex device) {
   return get()->setMemoryFraction(fraction, device);
 }
 
-inline void emptyCache(MempoolId_t mempool_id={0,0}) {
+inline void emptyCache(MempoolId_t mempool_id = {0, 0}) {
   return get()->emptyCache();
 }
 
@@ -405,7 +405,7 @@ inline void resetPeakStats(c10::DeviceIndex device) {
   return get()->resetPeakStats(device);
 }
 
-inline SnapshotInfo snapshot(MempoolId_t mempool_id={0,0}) {
+inline SnapshotInfo snapshot(MempoolId_t mempool_id = {0, 0}) {
   return get()->snapshot(mempool_id);
 }
 
@@ -482,7 +482,7 @@ inline void releasePool(c10::DeviceIndex device, MempoolId_t mempool_id) {
 inline void createOrIncrefPool(
     c10::DeviceIndex device,
     MempoolId_t mempool_id,
-    CUDAAllocator * allocator=nullptr) {
+    CUDAAllocator* allocator = nullptr) {
   get()->createOrIncrefPool(device, mempool_id, allocator);
 }
 inline void setUseOnOOM(

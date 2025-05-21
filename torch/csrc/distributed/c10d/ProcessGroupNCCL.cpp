@@ -1183,7 +1183,6 @@ void ProcessGroupNCCL::registerMemPool(c10::cuda::MemPool* pool) {
   // We must ensure we're listening for allocator trace events in order to
   // register future segments allocated in this pool (this call is idempotent).
   attachAllocatorHooks();
-  //auto ctx = c10::cuda::MemPoolContext(pool);
   auto snapshot = c10::cuda::CUDACachingAllocator::snapshot(pool->id());
   for (const auto& segmentInfo : snapshot.segments) {
     TORCH_INTERNAL_ASSERT(
@@ -1218,7 +1217,6 @@ void ProcessGroupNCCL::deregisterMemPool(c10::cuda::MemPool* pool) {
     auto iter = ncclCommMemPoolMap.find(ncclComm);
     iter->second.erase(pool->id());
   }
-  //auto ctx = c10::cuda::MemPoolContext(pool);
   auto snapshot = c10::cuda::CUDACachingAllocator::snapshot(pool->id());
   for (const auto& segmentInfo : snapshot.segments) {
     TORCH_INTERNAL_ASSERT(
@@ -5569,7 +5567,6 @@ at::Tensor ProcessGroupNCCL::allocateTensor(
   }
 
   // Allocate tensor under this MemPool's context
-  //auto ctx = c10::cuda::MemPoolContext(memPool_.get());
   c10::cuda::CUDACachingAllocator::beginAllocateToPool(
       memPool_->device(), memPool_->id(), [](cudaStream_t) { return true; });
   at::Tensor tensor = at::empty({size}, options);
