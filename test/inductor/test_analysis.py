@@ -168,14 +168,15 @@ def omni_model(device, dtype, compile=True, addmm=True, bmm=True):
         conv_weight = T(12, 3, 5, 5)
 
         # Increased matrix sizes
+        B = 8
         M = 256
         N = 512
         K = 768
         mat1 = T(M, N)
         mat2 = T(N, K)
 
-        batch_mat1 = T(1, M, N)
-        batch_mat2 = T(1, N, K)
+        batch_mat1 = T(B, M, N)
+        batch_mat2 = T(B, N, K)
 
         conv_output = F.conv2d(input_conv, conv_weight)
 
