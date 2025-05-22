@@ -172,6 +172,7 @@ def _calculate_flops(event: dict[str, Any]) -> int:
         args, kwargs = default_adapter(input_shapes, concrete)
     return flop_function(*args, **kwargs)
 
+
 def _get_size_from_string(type_string: str) -> int:
     if not hasattr(torch, type_string):
         return 1
@@ -186,6 +187,7 @@ def _default_estimate_gb(event: dict[str, Any]) -> float:
         isize = _get_size_from_string(typ)
         bw += isize * math.prod(pytree.tree_flatten(size)[0])
     return bw / 1e9
+
 
 def _estimate_gb(event: dict[str, Any]) -> float:
     """
@@ -204,15 +206,14 @@ def _estimate_gb(event: dict[str, Any]) -> float:
     if op_obj is None:
         return _default_estimate_gb(event)
 
-
     assert "Input Dims" in event["args"] and "Concrete Inputs" in event["args"]
     input_shapes = event["args"]["Input Dims"]
+
     # NOTE these will be refactored into a similar object to FlopCounter soon^tm
-    def mm_formula(M, N, K, size):
+    def mm_formula(M: int, N: int, K: int, size: int) -> int:
         return 2 * (M * K + N * K + M * N) * size
 
-
-    if op_name == 'addmm':
+    if op_name == "addmm":
         add_in_size = math.prod(pytree.tree_flatten(input_shapes[0])[0])
         add_type_size = _get_size_from_string(event["args"]["Input type"][0])
         M = input_shapes[1][0]
@@ -221,14 +222,14 @@ def _estimate_gb(event: dict[str, Any]) -> float:
         K = input_shapes[2][1]
         mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
         return (mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
-    elif op_name == 'mm':
+    elif op_name == "mm":
         M = input_shapes[0][0]
         N = input_shapes[0][1]
         assert input_shapes[0][1] == input_shapes[1][0]
         K = input_shapes[1][1]
         type_size = _get_size_from_string(event["args"]["Input type"][0])
         return mm_formula(M, N, K, type_size) / 1e9
-    elif op_name == 'baddbmm':
+    elif op_name == "baddbmm":
         add_in_size = math.prod(pytree.tree_flatten(input_shapes[0])[0])
         add_type_size = _get_size_from_string(event["args"]["Input type"][0])
         B = input_shapes[0][0]
@@ -236,8 +237,10 @@ def _estimate_gb(event: dict[str, Any]) -> float:
         N = input_shapes[1][2]
         K = input_shapes[2][2]
         mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
-        return (B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
-    elif op_name == 'bmm':
+        return (
+            B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size
+        ) / 1e9
+    elif op_name == "bmm":
         add_in_size = math.prod(pytree.tree_flatten(input_shapes[0])[0])
         add_type_size = _get_size_from_string(event["args"]["Input type"][0])
         B = input_shapes[0][0]
@@ -245,11 +248,15 @@ def _estimate_gb(event: dict[str, Any]) -> float:
         N = input_shapes[0][2]
         K = input_shapes[1][2]
         mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
-        return (B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
+        return (
+            B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size
+        ) / 1e9
     elif op_name in ["convolution", "_convolution", "cudnn_convolution"]:
         concrete = event["args"]["Concrete Inputs"]
+
         def conv_out_dim(x: int, kernel: int, stride: int) -> int:
             return (x - kernel) // stride + 1
+
         stride = parse_list(concrete[3])
         inp = input_shapes[0]
         w = input_shapes[1]
@@ -262,9 +269,6 @@ def _estimate_gb(event: dict[str, Any]) -> float:
         return (input_reads + weight_reads) / 1e9
 
     return _default_estimate_gb(event)
-
-
-
 
 
 def _create_extern_mapping(
