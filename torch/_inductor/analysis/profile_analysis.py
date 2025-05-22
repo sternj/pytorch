@@ -237,6 +237,15 @@ def _estimate_gb(event: dict[str, Any]) -> float:
         K = input_shapes[2][2]
         mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
         return (B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
+    elif op_name == 'bmm':
+        add_in_size = math.prod(pytree.tree_flatten(input_shapes[0])[0])
+        add_type_size = _get_size_from_string(event["args"]["Input type"][0])
+        B = input_shapes[0][0]
+        M = input_shapes[0][1]
+        N = input_shapes[0][2]
+        K = input_shapes[1][2]
+        mul_type_size = _get_size_from_string(event["args"]["Input type"][1])
+        return (B * mm_formula(M, N, K, mul_type_size) + add_in_size * add_type_size) / 1e9
     elif op_name in ["convolution", "_convolution", "cudnn_convolution"]:
         concrete = event["args"]["Concrete Inputs"]
         def conv_out_dim(x: int, kernel: int, stride: int) -> int:
@@ -245,18 +254,13 @@ def _estimate_gb(event: dict[str, Any]) -> float:
         inp = input_shapes[0]
         w = input_shapes[1]
         out_x_y = [conv_out_dim(*args) for args in zip(inp[2:], w[2:], stride)]
-        out = [inp[0], w[0]] + out_x_y  # we only need the xy values
+        out = [inp[0], w[0]] + out_x_y
         # each output element reads in * w * w chunk
         input_reads = out[0] * out[1] * out[2] * out[3] * inp[1] * w[2] * w[3]
         # Assume weights are in cache, so only read once
         weight_reads = w[0] * w[1] * w[2] * w[3]
         return (input_reads + weight_reads) / 1e9
 
-        
-    
-    print(op_name)
-    if op_name not in ["copy_", "random_", "fill_", "normal_", "uniform_", "randn_", "rand_", "randperm_", "bernoulli_", "bernoulli_"]:
-        breakpoint()
     return _default_estimate_gb(event)
 
 
