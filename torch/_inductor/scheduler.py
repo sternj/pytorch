@@ -2014,7 +2014,7 @@ _post_grad_graph_counter = itertools.count()
 
 class Scheduler:
     """
-    A Scheduler is a graph of BaseSchedulerNode's. It is responsible for
+    A Scheduler is a graph of BaseSchedulerNodes. It is responsible for
     optimizations such as fusion, reorder, and graph partition.
     """
 
@@ -4279,6 +4279,10 @@ class Scheduler:
         name_to_node = self.get_name_to_nodes()
 
         def is_none_layout(buf_name: str) -> bool:
+            """
+            Checks if buf_name is NoneLayout. Buffers with NoneLayout is not allocated
+            so graph partition should not take it as inputs or outputs.
+            """
             buf = self.name_to_buf.get(buf_name, None)
 
             if buf is None:
@@ -4318,7 +4322,6 @@ class Scheduler:
                         x.name
                         for x in read_writes.reads | read_writes.writes
                         if not is_none_layout(x.name)
-                        # if not isinstance(x, WeakDep)
                     ]
                 )
                 - output_names
@@ -4356,7 +4359,16 @@ class Scheduler:
 
             returned_output_names.update(extra_output_names)
 
-            output_nodes = [name_to_node[name] for name in returned_output_names]
+            returned_output_names = OrderedSet(
+                self.mutation_real_name.get(name, name)
+                for name in returned_output_names
+            )
+
+            output_nodes = [
+                name_to_node[name]
+                for name in returned_output_names
+                if not is_none_layout(name)
+            ]
 
             constant_names = [
                 name for name in partition_input_names if name in V.graph.constants
