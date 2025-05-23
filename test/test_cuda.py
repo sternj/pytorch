@@ -5264,6 +5264,7 @@ class TestMemPool(TestCase):
         self.assertEqual(len(set(pool_ids)), 4)
 
     @skipIfRocm(msg="expandable_segments mode is not supported on ROCm")
+    @unittest.skipIf(IS_FBCODE or IS_SANDCASTLE, "Load_inline doesn't work in fbcode")
     def test_mempool_expandable(self):
         torch.cuda.memory._set_allocator_settings("expandable_segments:True")
         allocator, _ = self.get_dummy_allocator(check_vars=False)
