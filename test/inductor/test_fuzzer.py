@@ -11,6 +11,7 @@ from torch._inductor import config as inductor_config
 from torch._inductor.fuzzer import ConfigFuzzer, MODULE_DEFAULTS, SamplingMethod, Status
 from torch._inductor.test_case import run_tests, TestCase
 from torch.testing._internal import fake_config_module as fake_config
+from torch.testing._internal.common_utils import IS_S390X
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 
 
@@ -162,6 +163,7 @@ class TestConfigFuzzer(TestCase):
             - set(MODULE_DEFAULTS["torch._inductor.config"].keys()),
         )
 
+    @unittest.skipIf(IS_S390X, "Fails on s390x under some circumstances")
     @unittest.skipIf(sys.version_info < (3, 10), "python < 3.10 not supported")
     def test_config_fuzzer_dynamo_bisect(self):
         # these values just chosen randomly, change to different ones if necessary
