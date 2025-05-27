@@ -135,7 +135,7 @@ class CacheEntry {
   std::optional<StepCallbacks> getActiveCallbacksUnlessEmpty();
 
   // Full rebuild. (E.g. during registration)
-  void update(const std::vector<RecordFunctionCallback>& callbacks);
+  void update(const std::vector<RecordFunctionCallback>& callbacks, const CallbackHandles& handles);
 
  private:
   struct CallbackAndCounter {
@@ -155,6 +155,7 @@ class CacheEntry {
 
   // Includes sampling callbacks which are waiting to run.
   c10::SmallVector<CallbackAndCounter, kSoftLimitCallbacks> callbacks_;
+  CallbackHandles handles_;
   RecordScope scope_{RecordScope::FUNCTION};
 
   StepCallbacks active_callbacks_;
@@ -270,12 +271,17 @@ CacheEntry::CacheEntry(std::mt19937* generator, RecordScope scope)
   rebuildActiveCallbacks();
 }
 
-void CacheEntry::update(const std::vector<RecordFunctionCallback>& callbacks) {
+void CacheEntry::update(const std::vector<RecordFunctionCallback>& callbacks, const CallbackHandles& handles) {
   callbacks_.clear();
   callbacks_.reserve(callbacks.size());
-  for (const auto& callback : callbacks) {
+
+  // for (const auto& callback : callbacks) {
+  for (size_t i = 0; i < callbacks.size(); ++i) {
+    const auto& callback = callbacks[i];
+    const auto& handle = handles[i];
     const auto p = callback.samplingProb();
     callbacks_.push_back({callback, p < 1.0 ? sampleTries(p) : -1});
+    handles_.push_back(handle);
   }
 
   rebuildActiveCallbacks();
@@ -327,7 +333,10 @@ void CacheEntry::rebuildActiveCallbacks() {
   active_callbacks_ = StepCallbacks(thread_id, scope_);
 
   sampling_countdown_ = std::numeric_limits<int>::max();
-  for (const auto& i : callbacks_) {
+  // for (const auto& i : callbacks_) {
+  for(size_t idx = 0; idx < callbacks_.size(); ++idx) {
+    auto& i = callbacks_[idx];
+    auto handle = handles_[idx];
     if (i.tries_left_ < 0) {
       // Callback is not sampled. Unconditionally push.
       active_callbacks_.callbacks_.push_back(
@@ -339,6 +348,7 @@ void CacheEntry::rebuildActiveCallbacks() {
       // call.
       active_callbacks_.callbacks_.push_back(
           {i.callback_.start(), i.callback_.end()});
+      active_callbacks_.callback_handles_.push_back(handle);
       sampling_countdown_ = 1;
 
     } else {
@@ -481,6 +491,7 @@ void LocalCallbackManager::rebuild_scope(
     const GlobalCallbackManager::snapshot_t& global_snapshot,
     const RecordScope scope) {
   std::vector<RecordFunctionCallback> callbacks;
+  CallbackHandles handles;
   if (registered_callbacks_.tls_record_function_enabled_) {
     auto populate_callbacks =
         [&](const RecordFunctionCallbacks& raw_callbacks) {
@@ -488,13 +499,14 @@ void LocalCallbackManager::rebuild_scope(
             if (i.enabled_ && i.callback_.checkScope(scope) &&
                 i.callback_.samplingProb() > 0) {
               callbacks.push_back(i.callback_);
+              handles.push_back(i.handle_);
             }
           }
         };
     populate_callbacks(global_snapshot.second);
     populate_callbacks(registered_callbacks_.sorted_tls_callbacks_);
   }
-  active_callbacks_[static_cast<size_t>(scope)].update(callbacks);
+  active_callbacks_[static_cast<size_t>(scope)].update(callbacks, handles);
 }
 
 // ============================================================================
@@ -544,19 +556,25 @@ RecordFunction::RecordFunction(StepCallbacks&& step_callbacks)
 
 void RecordFunction::runStartCallbacks() {
   for (const auto i : c10::irange(step_callbacks_.callbacks_.size())) {
+    current_handle_ = step_callbacks_.callback_handles_[i];
     tryRunCallback</*is_start=*/true>(
         step_callbacks_.callbacks_[i], *this, ctx_[i]);
   }
+  current_handle_ = INVALID_CALLBACK_HANDLE;
   called_start_callbacks_ = true;
 }
 
 void RecordFunction::end() {
   if (called_start_callbacks_) {
     for (const auto i : c10::irange(step_callbacks_.callbacks_.size())) {
+      current_handle_ = step_callbacks_.callback_handles_[i];
       tryRunCallback</*is_start=*/false>(
           step_callbacks_.callbacks_[i], *this, ctx_[i]);
     }
+
+    current_handle_ = INVALID_CALLBACK_HANDLE;
     step_callbacks_.callbacks_.clear();
+    step_callbacks_.callback_handles_.clear();
   }
 }
 

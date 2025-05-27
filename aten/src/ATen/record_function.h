@@ -272,6 +272,7 @@ struct StepCallbacks {
   using StartEndPairs = c10::SmallVector<StartEndPair, kSoftLimitCallbacks>;
 
   StartEndPairs callbacks_;
+  CallbackHandles callback_handles_;
   uint64_t thread_id_{0};
   RecordScope scope_{RecordScope::FUNCTION};
   bool needs_inputs_{false};
@@ -545,6 +546,7 @@ struct TORCH_API RecordFunction {
 
   // Whether this RecordFunction is used for NCCL metadata collection
   bool is_nccl_meta_{false};
+  CallbackHandle current_handle_{INVALID_CALLBACK_HANDLE};
 };
 
 TORCH_API StepCallbacks getStepCallbacks(RecordScope scope);
