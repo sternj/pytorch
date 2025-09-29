@@ -274,7 +274,8 @@ CacheEntry::CacheEntry(std::mt19937* generator, RecordScope scope)
 void CacheEntry::update(const std::vector<RecordFunctionCallback>& callbacks, const CallbackHandles& handles) {
   callbacks_.clear();
   callbacks_.reserve(callbacks.size());
-
+  handles_.clear();
+  handles_.reserve(handles.size());
   // for (const auto& callback : callbacks) {
   for (size_t i = 0; i < callbacks.size(); ++i) {
     const auto& callback = callbacks[i];
@@ -341,7 +342,7 @@ void CacheEntry::rebuildActiveCallbacks() {
       // Callback is not sampled. Unconditionally push.
       active_callbacks_.callbacks_.push_back(
           {i.callback_.start(), i.callback_.end()});
-
+      active_callbacks_.callback_handles_.push_back(handle);
     } else if (i.tries_left_ == 0) {
       // Callback is sampled and we have reached a sampling event. Push and
       // set `sampling_countdown_` to one so we trigger a rebuild after one

@@ -492,6 +492,10 @@ struct TORCH_API RecordFunction {
     debug_handle_ = debug_handle;
   }
 
+  CallbackHandle getCurrentHandle() const {
+    return current_handle_;
+  }
+
   void invalidateInputs() {
 #ifndef NDEBUG
     inputs_valid_ = false;
