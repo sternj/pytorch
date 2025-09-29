@@ -1,7 +1,8 @@
 # mypy: allow-untyped-defs
 import functools
 import itertools as it
-from typing import Any, Callable, Optional, Union
+from typing import Any, Optional, Union
+from collections.abc import Callable
 
 import torch
 
@@ -290,7 +291,7 @@ class FuzzedTensor:
             raw_tensor = raw_tensor.permute(tuple(np.argsort(order)))
 
         slices = [slice(0, size * step, step) for size, step in zip(size, steps)]
-        tensor = raw_tensor[slices]
+        tensor = raw_tensor[tuple(slices)]
 
         properties = {
             "numel": int(tensor.numel()),

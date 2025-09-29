@@ -41,6 +41,7 @@ from torch.testing._internal.common_utils import (
     skipIfSlowGradcheckEnv,
     slowTest,
     TEST_WITH_ROCM,
+    TEST_XPU,
 )
 from torch.testing._internal.opinfo.core import (
     clone_sample,
@@ -725,7 +726,7 @@ def sample_inputs_linalg_lstsq(op_info, device, dtype, requires_grad=False, **kw
     if device.type == "cpu" or has_cusolver():
         deltas = (-1, 0, +1)
     # only square systems if Cusolver is not available
-    # becase we solve a lstsq problem with a transposed matrix in the backward
+    # because we solve a lstsq problem with a transposed matrix in the backward
     else:
         deltas = (0,)
 
@@ -1766,7 +1767,12 @@ op_db: list[OpInfo] = [
         decorators=[skipCUDAIfNoMagmaAndNoCusolver, skipCPUIfNoLapack],
         skips=(
             # linalg.lu_factor: LU without pivoting is not implemented on the CPU
-            DecorateInfo(unittest.expectedFailure, "TestCommon", "test_compare_cpu"),
+            DecorateInfo(
+                unittest.expectedFailure,
+                "TestCommon",
+                "test_compare_cpu",
+                active_if=(not TEST_XPU),
+            ),
         ),
     ),
     OpInfo(
@@ -1782,7 +1788,12 @@ op_db: list[OpInfo] = [
         decorators=[skipCUDAIfNoMagmaAndNoCusolver, skipCPUIfNoLapack],
         skips=(
             # linalg.lu_factor: LU without pivoting is not implemented on the CPU
-            DecorateInfo(unittest.expectedFailure, "TestCommon", "test_compare_cpu"),
+            DecorateInfo(
+                unittest.expectedFailure,
+                "TestCommon",
+                "test_compare_cpu",
+                active_if=(not TEST_XPU),
+            ),
         ),
     ),
     OpInfo(
@@ -1799,7 +1810,12 @@ op_db: list[OpInfo] = [
         decorators=[skipCUDAIfNoMagmaAndNoCusolver, skipCPUIfNoLapack],
         skips=(
             # linalg.lu_factor: LU without pivoting is not implemented on the CPU
-            DecorateInfo(unittest.expectedFailure, "TestCommon", "test_compare_cpu"),
+            DecorateInfo(
+                unittest.expectedFailure,
+                "TestCommon",
+                "test_compare_cpu",
+                active_if=(not TEST_XPU),
+            ),
         ),
     ),
     OpInfo(

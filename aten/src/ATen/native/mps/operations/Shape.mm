@@ -4,7 +4,6 @@
 #include <ATen/WrapDimUtils.h>
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
-#include <ATen/native/mps/MPSGraphVenturaOps.h>
 #include <ATen/native/mps/OperationUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -86,6 +85,10 @@ TORCH_IMPL_FUNC(topk_out_mps)
     indices.copy_(values.toType(at::ScalarType::Long));
     return;
   }
+
+  // issue #154890, raising error to prevent crash within MPSGraph until
+  // workaround is implemented.
+  TORCH_CHECK(self.dim() - dim <= 4, "On-going issue on MPSGraph topk when ndims() - axis > 4, see issue #154890");
 
   MPSStream* stream = getCurrentMPSStream();
   struct CachedGraph : public MPSCachedGraph {

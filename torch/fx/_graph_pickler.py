@@ -212,8 +212,6 @@ class _SymNodePickleData:
         self.hint = node._hint
 
     def _to_sym_node(self) -> SymNode:
-        from torch.fx.experimental.sym_node import SymNode
-
         assert self.shape_env is not None
         return SymNode(self.expr, self.shape_env, self.pytype, self.hint)
 
@@ -253,9 +251,9 @@ class _TensorPickleData:
         for k in MetaTensorDesc._UNSERIALIZABLE:
             if k in ("fake_mode", "view_func"):
                 continue
-            assert (
-                getattr(self.metadata, k) is None
-            ), f"not None: {k}: {getattr(self.metadata, k)}"
+            assert getattr(self.metadata, k) is None, (
+                f"not None: {k}: {getattr(self.metadata, k)}"
+            )
 
     def unpickle(self, unpickle_state: _UnpickleState) -> FakeTensor:
         # TODO: make common w/ _output_from_cache_entry() in fake_tensor.py?
@@ -263,6 +261,14 @@ class _TensorPickleData:
             self.metadata,
             fake_mode=unpickle_state.fake_mode,
         )
+
+        # also need to set the fake_mode on the base of a tensor if it's a view
+        if metadata.is_view and metadata.base is not None:
+            new_base = dataclasses.replace(
+                metadata.base,
+                fake_mode=unpickle_state.fake_mode,
+            )
+            metadata = dataclasses.replace(metadata, base=new_base)
 
         def with_fake(
             make_meta_t: Callable[[], torch.Tensor], device: Union[torch.device, str]

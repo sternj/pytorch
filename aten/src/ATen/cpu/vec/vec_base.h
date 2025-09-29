@@ -67,18 +67,7 @@ Windows llvm will not have this definition.
 #endif
 #define VECTOR_WIDTH 64
 #define int_vector __m512i
-#elif defined(__aarch64__) && \
-    !defined(CPU_CAPABILITY_SVE) // CPU_CAPABILITY_AVX512
-// SVE code expects 256-vectors; leave that set for SVE?
-#if defined(__GNUC__)
-#define __at_align__ __attribute__((aligned(16)))
-#elif defined(_WIN32)
-#define __at_align__ __declspec(align(16))
-#else
-#define __at_align__
-#endif
-#define VECTOR_WIDTH 16
-#else // CPU_CAPABILITY_AVX512
+#elif defined(CPU_CAPABILITY_AVX2) || defined(CPU_CAPABILITY_SVE256)
 #if defined(__GNUC__)
 #define __at_align__ __attribute__((aligned(32)))
 #elif defined(_WIN32)
@@ -88,7 +77,27 @@ Windows llvm will not have this definition.
 #endif
 #define VECTOR_WIDTH 32
 #define int_vector __m256i
-#endif // CPU_CAPABILITY_AVX512
+#elif defined(__aarch64__)
+// Define alignment and vector width for SVE128/Default (e.g., NEON)
+#if defined(__GNUC__)
+#define __at_align__ __attribute__((aligned(16)))
+#elif defined(_WIN32)
+#define __at_align__ __declspec(align(16))
+#else
+#define __at_align__
+#endif
+#define VECTOR_WIDTH 16
+#else
+// Fallback: define default alignment and vector width
+#if defined(__GNUC__)
+#define __at_align__ __attribute__((aligned(32)))
+#elif defined(_WIN32)
+#define __at_align__ __declspec(align(32))
+#else
+#define __at_align__
+#endif
+#define VECTOR_WIDTH 32
+#endif
 
 namespace at::vec {
 // See Note [CPU_CAPABILITY namespace]
@@ -238,9 +247,6 @@ struct Vectorized {
     Vectorized vector;
     int_same_size_t<T> buffer[size()];
     mask.store(buffer);
-#if defined(__clang__) && __ARM_FEATURE_SVE
-#pragma clang loop vectorize(disable)
-#endif
     for (const auto i : c10::irange(size())) {
       if (buffer[i] & 0x01) {
         vector[i] = b[i];
@@ -545,6 +551,9 @@ struct Vectorized {
     return map(std::expm1);
   }
   Vectorized<T> exp_u20() const {
+    return map(std::exp);
+  }
+  Vectorized<T> fexp_u20() const {
     return map(std::exp);
   }
   Vectorized<T> frac() const {
@@ -1248,6 +1257,16 @@ inline Vectorized<T> fmadd(
 VECTORIZED_SUPPORT_SCALARS_FOR_TERNARY_FUNC(fmadd)
 
 template <typename T>
+inline Vectorized<T> fnmadd(
+    const Vectorized<T>& a,
+    const Vectorized<T>& b,
+    const Vectorized<T>& c) {
+  return -(a * b) + c;
+}
+
+VECTORIZED_SUPPORT_SCALARS_FOR_TERNARY_FUNC(fnmadd)
+
+template <typename T>
 inline Vectorized<T> fmsub(
     const Vectorized<T>& a,
     const Vectorized<T>& b,
@@ -1256,6 +1275,16 @@ inline Vectorized<T> fmsub(
 }
 
 VECTORIZED_SUPPORT_SCALARS_FOR_TERNARY_FUNC(fmsub)
+
+template <typename T>
+inline Vectorized<T> fnmsub(
+    const Vectorized<T>& a,
+    const Vectorized<T>& b,
+    const Vectorized<T>& c) {
+  return -(a * b) - c;
+}
+
+VECTORIZED_SUPPORT_SCALARS_FOR_TERNARY_FUNC(fnmsub)
 
 template <typename T>
 Vectorized<T> inline operator&&(

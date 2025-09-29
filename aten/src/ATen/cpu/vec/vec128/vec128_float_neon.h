@@ -4,12 +4,9 @@
 // See Note [Do not compile initializers with AVX]
 
 #include <ATen/cpu/vec/intrinsics.h>
+#include <ATen/cpu/vec/sve/sve_helper.h>
 #include <ATen/cpu/vec/vec_base.h>
 #include <c10/util/irange.h>
-
-#if defined(__aarch64__) && defined(AT_BUILD_ARM_VEC256_WITH_SLEEF)
-#include <sleef.h>
-#endif
 
 // Sleef offers vectorized versions of some transcedentals
 // such as sin, cos, tan etc..
@@ -33,12 +30,6 @@ inline namespace CPU_CAPABILITY {
 
 #ifdef __BIG_ENDIAN__
 #error "Big endian is not supported."
-#endif
-
-#if defined(AT_BUILD_ARM_VEC256_WITH_SLEEF)
-#define USE_SLEEF(sleef_code, non_sleef_code) sleef_code
-#else
-#define USE_SLEEF(sleef_code, non_sleef_code) non_sleef_code
 #endif
 
 template <int index, bool mask_val>
@@ -83,7 +74,9 @@ class Vectorized<float> {
   static constexpr size_type size() {
     return 4;
   }
-  Vectorized() {}
+  Vectorized() {
+    values = vmovq_n_f32(0);
+  }
   Vectorized(float32x4_t v) : values(v) {}
   Vectorized(float val) : values{vdupq_n_f32(val)} {}
   Vectorized(float val0, float val1, float val2, float val3)
@@ -92,6 +85,12 @@ class Vectorized<float> {
   operator float32x4_t() const {
     return values;
   }
+#ifdef CPU_CAPABILITY_SVE128
+  Vectorized(svfloat32_t v) : values(svget_neonq(v)) {}
+  operator svfloat32_t() const {
+    return svset_neonq(svundef_f32(), values);
+  }
+#endif
   template <int64_t mask>
   static Vectorized<float> blend(
       const Vectorized<float>& a,
@@ -202,18 +201,14 @@ class Vectorized<float> {
     store(tmp);
     return tmp[idx];
   }
-  // For boolean version where we want to if any 1/all zero
-  // etc. can be done faster in a different way.
   int zero_mask() const {
-    __at_align__ float tmp[size()];
-    store(tmp);
-    int mask = 0;
-    for (int i = 0; i < size(); ++i) {
-      if (tmp[i] == 0.f) {
-        mask |= (1 << i);
-      }
-    }
-    return mask;
+    uint32x4_t is_zero_vec = vceqzq_f32(values);
+    const int32x4_t shift = vcombine_s32(
+        vcreate_s32(0x0 | (int64_t(0x1) << 32)),
+        vcreate_s32(0x2 | (int64_t(0x3) << 32)));
+    uint32x4_t bits_vec =
+        vshlq_u32(vandq_u32(is_zero_vec, vdupq_n_u32(1)), shift);
+    return vaddvq_u32(bits_vec);
   }
   Vectorized<float> isnan() const {
     return vreinterpretq_f32_u32(vmvnq_u32(vceqq_f32(values, values)));
@@ -310,6 +305,9 @@ class Vectorized<float> {
   DEFINE_SLEEF_COMPATIBLE_UNARY_ELEMENTWISE_FUNC(exp2)
   DEFINE_SLEEF_COMPATIBLE_UNARY_ELEMENTWISE_FUNC(expm1)
   Vectorized<float> exp_u20() const {
+    return exp();
+  }
+  Vectorized<float> fexp_u20() const {
     return exp();
   }
   DEFINE_SLEEF_COMPATIBLE_BINARY_ELEMENTWISE_FUNC_WITH_SLEEF_NAME(
@@ -584,11 +582,27 @@ Vectorized<float> inline fmadd(
 }
 
 template <>
+Vectorized<float> inline fnmadd(
+    const Vectorized<float>& a,
+    const Vectorized<float>& b,
+    const Vectorized<float>& c) {
+  return Vectorized<float>(vfmsq_f32(c, a, b));
+}
+
+template <>
 Vectorized<float> inline fmsub(
     const Vectorized<float>& a,
     const Vectorized<float>& b,
     const Vectorized<float>& c) {
   return Vectorized<float>(vnegq_f32(vfmsq_f32(c, a, b)));
+}
+
+template <>
+Vectorized<float> inline fnmsub(
+    const Vectorized<float>& a,
+    const Vectorized<float>& b,
+    const Vectorized<float>& c) {
+  return Vectorized<float>(vnegq_f32(vfmaq_f32(c, a, b)));
 }
 
 inline Vectorized<float> Vectorized<float>::erf() const {

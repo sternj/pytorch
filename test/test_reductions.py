@@ -735,7 +735,7 @@ class TestReductions(TestCase):
         res2 = x1.sum(axis=(0, 2), keepdims=True)
         self.assertEqual(res1, res2)
 
-    # TODO: kill this ane replace with common creation ops
+    # TODO: kill this and replace with common creation ops
     def _make_tensors(self, shape, val_range=(-100, 100), use_floating=True, use_integral=True,
                       use_complex=False) -> dict[str, list[torch.Tensor]]:
         float_types = [torch.double,
@@ -1629,7 +1629,7 @@ class TestReductions(TestCase):
                 RuntimeError, "only when boundaries tensor dimension is 1"):
             torch.searchsorted(boundaries, 1)
 
-        # incompatiable output tensor's dtype
+        # incompatible output tensor's dtype
         def test_output_dtype(dtype, is_int32):
             output = values_1d.to(dtype)
             with self.assertRaisesRegex(
@@ -2018,7 +2018,7 @@ class TestReductions(TestCase):
                 with self.assertRaisesRegex(RuntimeError, error_msg):
                     op(x, dim=dim)
 
-    # TODO: update this test to comapre against NumPy
+    # TODO: update this test to compare against NumPy
     @onlyCUDA
     def test_var(self, device):
         cpu_tensor = torch.randn(2, 3, 3)
@@ -2513,7 +2513,7 @@ class TestReductions(TestCase):
             k = int((t.numel() - 1) / 2)
             self.assertEqual(res, t.view(-1).sort()[0][k])
             if t.numel() % 2 == 1:
-                # We can only test agains numpy for odd reductions because numpy
+                # We can only test against numpy for odd reductions because numpy
                 # returns the mean of the two medians and torch returns the lower
                 self.assertEqual(res.cpu().numpy(), np.median(t_numpy))
             for dim in range(t.ndim):
@@ -2524,7 +2524,7 @@ class TestReductions(TestCase):
                 self.assertEqual(res[0], (t.sort(dim)[0]).select(dim, k).unsqueeze_(dim))
                 self.assertEqual(res[0], t.gather(dim, res[1]))
                 if size % 2 == 1:
-                    # We can only test agains numpy for odd reductions because numpy
+                    # We can only test against numpy for odd reductions because numpy
                     # returns the mean of the two medians and torch returns the lower
                     self.assertEqual(res[0].cpu().numpy(), np.median(t_numpy, dim, keepdims=True), exact_dtype=False)
 
@@ -2548,7 +2548,7 @@ class TestReductions(TestCase):
                     k = int((t.numel() - num_nan - 1) / 2)
                 self.assertEqual(res, t.view(-1).sort()[0][k])
                 if (t.numel() - num_nan) % 2 == 1:
-                    # We can only test agains numpy for odd reductions because numpy
+                    # We can only test against numpy for odd reductions because numpy
                     # returns the mean of the two medians and torch returns the lower
                     self.assertEqual(res.item(), numpy_op(t.cpu().numpy()))
                 for dim in range(t.ndim):
@@ -2561,7 +2561,7 @@ class TestReductions(TestCase):
                         k = ((size - num_nan - 1) / 2).type(torch.long)
                     self.assertEqual(res[0], (t.sort(dim)[0]).gather(dim, k))
                     self.assertEqual(res[0], t.gather(dim, res[1]))
-                    # We can only test agains numpy for odd reductions because numpy
+                    # We can only test against numpy for odd reductions because numpy
                     # returns the mean of the two medians and torch returns the lower
                     mask = (size - num_nan) % 2 == 1
                     res = res[0].masked_select(mask).cpu()
@@ -3047,9 +3047,13 @@ class TestReductions(TestCase):
             torch.tensor([1], dtype=torch.float, device=device),
             actual)
         # tensors with inf; min, max not provided -- should throw a RuntimeError
-        with self.assertRaisesRegex(RuntimeError, r'range of \[inf, inf\] is not finite'):
+        with self.assertRaisesRegex(RuntimeError, r'range of \[[\w,+\-\.\ ]+\] is not finite'):
             torch.histc(torch.tensor([float("inf")], dtype=torch.float, device=device))
-        with self.assertRaisesRegex(RuntimeError, r'range of \[1, inf\] is not finite'):
+        with self.assertRaisesRegex(RuntimeError, r'range of \[[\w,+\-\.\ ]+\] is not finite'):
+            torch.histc(torch.tensor([float("-inf")], dtype=torch.float, device=device))
+        with self.assertRaisesRegex(RuntimeError, r'range of \[[\w,+\-\.\ ]+\] is not finite'):
+            torch.histc(torch.tensor([float("-inf"), float("inf")], dtype=torch.float, device=device))
+        with self.assertRaisesRegex(RuntimeError, r'range of \[[\w,+\-\.\ ]+\] is not finite'):
             torch.histc(torch.tensor([1., 2., float("inf")], dtype=torch.float, device=device))
         # tensors with inf; min, max provided
         self.assertEqual(
@@ -3129,6 +3133,20 @@ class TestReductions(TestCase):
         self.assertEqual(
             torch.tensor([2, 0, 0, 1], dtype=dtype, device=device),
             actual)
+
+    @onlyCPU
+    @dtypes(torch.float, torch.double)
+    def test_histc_value_corner_cases(self, device, dtype):
+        min_val = torch.finfo(dtype).min
+        actual = torch.histc(
+            torch.tensor([min_val, min_val, min_val], dtype=dtype, device=device),
+            bins=4)
+        self.assertEqual(3.0, actual.sum())
+        max_val = torch.finfo(dtype).max
+        actual = torch.histc(
+            torch.tensor([max_val, max_val, max_val], dtype=dtype, device=device),
+            bins=4)
+        self.assertEqual(3.0, actual.sum())
 
     @onlyCUDA
     @dtypes(torch.uint8, torch.int8, torch.int, torch.long)
@@ -3526,7 +3544,7 @@ as the input tensor excluding its innermost dimension'):
     # raises an error if no `dim` parameter is specified. This exists separately from tests in
     # test_tensot_compare_ops_empty because not specifying a `dim` parameter in the former tests does
     # not throw errors. Also, checking the return type of argmax requires supplying a different dtype
-    # argument than that for the input tensor. There is also variantion in numpy testing.
+    # argument than that for the input tensor. There is also variation in numpy testing.
     def test_tensor_compare_ops_argmax_argmix_kthvalue_dim_empty(self, device):
         shape = (2, 0, 4)
         master_input = torch.randn(shape, device=device)

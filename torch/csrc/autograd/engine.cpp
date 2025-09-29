@@ -75,17 +75,17 @@ inline bool should_run_in_cpu_ready_queue(c10::DeviceType device) {
 std::atomic<Engine::compiled_autograd_fn> the_compiled_autograd = nullptr;
 #define COMPILED_AUTOGRAD_POISON \
   reinterpret_cast<Engine::compiled_autograd_fn>(1)
-std::atomic<int32_t> num_threads_in_backwards;
+std::atomic<int32_t> num_threads_in_compiled_autograd;
 struct CompiledAutogradThreadingDebugCheck {
   CompiledAutogradThreadingDebugCheck() {
-    num_threads_in_backwards++;
+    num_threads_in_compiled_autograd++;
   }
   ~CompiledAutogradThreadingDebugCheck() {
     release();
   }
   void release() {
     if (std::exchange(incremented, false)) {
-      num_threads_in_backwards--;
+      num_threads_in_compiled_autograd--;
     }
   }
 
@@ -611,7 +611,7 @@ auto Engine::thread_main(const std::shared_ptr<GraphTask>& graph_task) -> void {
   }
 }
 
-// Reentrant call will re-use the graph_task's owner thread ready_queue for
+// Reentrant call will reuse the graph_task's owner thread ready_queue for
 // queueing tasks (NOTE: this is not true in the async_mode of the engine).
 // While we can create separate ready queue for each new reentrant
 // thread, but sharing the same cpu_ready_queue with parent thread is a
@@ -707,9 +707,8 @@ void GraphTask::mark_as_completed_and_run_post_processing() {
 }
 
 void GraphTask::exec_post_processing() {
-  if (!not_ready_.empty()) {
-    throw std::runtime_error("could not compute gradients for some functions");
-  }
+  TORCH_CHECK(
+      not_ready_.empty(), "could not compute gradients for some functions");
 
   // set the thread_local current_graph_task_ as more callbacks can be installed
   // by existing final callbacks.
@@ -979,13 +978,13 @@ static void validate_outputs_impl(
     }
 
     if (grad.device() != metadata.device()) {
-      // quick hack for: https://github.com/pytorch/pytorch/issues/65016 but
-      // should be eventually removed
-      if (!(metadata.is_tensor_subclass() ||
-            grad.unsafeGetTensorImpl()->is_python_dispatch())) {
-        if (grad.dim() == 0) {
-          grad = grad.to(metadata.device());
-        } else {
+      if (grad.dim() == 0) {
+        grad = grad.to(metadata.device());
+      } else {
+        // quick hack for: https://github.com/pytorch/pytorch/issues/65016 but
+        // should be eventually removed
+        if (!(metadata.is_tensor_subclass() ||
+              grad.unsafeGetTensorImpl()->is_python_dispatch())) {
           std::stringstream ss;
           ss << "invalid gradient at index " << i << " - expected device ";
           ss << metadata.device() << " but got " << grad.device();
@@ -1075,19 +1074,16 @@ void Engine::evaluate_function(
       continue;
     }
     const auto device = inputs.buffer[pos].device();
-    // TODO: Use at::accelerator::isAccelerator(device->type()) instead
-    bool is_accelerator =
-        device.is_cuda() || device.is_mtia() || device.is_privateuseone();
+    bool is_accelerator = at::accelerator::isAccelerator(device.type());
     if (!is_accelerator) {
       continue;
     }
-    TORCH_INTERNAL_ASSERT(inputs.ready_events[pos].has_value());
-    TORCH_INTERNAL_ASSERT(inputs.ready_streams[pos].has_value());
-    TORCH_INTERNAL_ASSERT(opt_parent_stream.has_value());
-    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-    if (opt_parent_stream.value() != inputs.ready_streams[pos].value()) {
-      // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-      opt_parent_stream->wait(inputs.ready_events[pos].value());
+    auto& opt_ready_stream = inputs.ready_streams[pos];
+    auto& opt_ready_event = inputs.ready_events[pos];
+    TORCH_INTERNAL_ASSERT(opt_ready_stream && opt_parent_stream);
+    if (*opt_parent_stream != *opt_ready_stream) {
+      TORCH_INTERNAL_ASSERT(opt_ready_event);
+      opt_parent_stream->wait(opt_ready_event.value());
     }
   }
 
@@ -1152,12 +1148,13 @@ void Engine::evaluate_function(
     for (const auto i : c10::irange(num_outputs)) {
       auto& output = outputs[i];
       at::OptionalDeviceGuard guard(device_of(output));
-      if (output.defined() && isnan(output)._is_any_true().item<bool>()) {
-        std::stringstream ss;
-        ss << "Function '" << fn.name() << "' returned nan values in its " << i
-           << "th output.";
-        throw std::runtime_error(ss.str());
-      }
+      TORCH_CHECK(
+          !output.defined() || !isnan(output)._is_any_true().item<bool>(),
+          "Function '",
+          fn.name(),
+          "' returned nan values in its ",
+          i,
+          "th output.");
     }
   }
 
@@ -1178,7 +1175,7 @@ void Engine::evaluate_function(
 
     if (it == dependencies.end()) {
       auto name = next.function->name();
-      throw std::runtime_error(std::string("dependency not found for ") + name);
+      TORCH_CHECK(false, "dependency not found for ", name);
     } else if (--it->second == 0) {
       dependencies.erase(it);
       is_ready = true;
@@ -1228,7 +1225,7 @@ void Engine::evaluate_function(
 }
 
 static uint64_t compute_min_topological_nr(const edge_list& outputs) {
-  // Computes the mininum topological number among all the outputs
+  // Computes the minimum topological number among all the outputs
   if (outputs.empty()) {
     return 0;
   }
@@ -1299,8 +1296,6 @@ auto Engine::execute(
         "your parameters to None after use to break the cycle and avoid the leak.");
   }
 
-  // Allows us to assert no other threads are in backwards
-  CompiledAutogradThreadingDebugCheck _thread_check;
   auto compiled_autograd = the_compiled_autograd.load();
   TORCH_INTERNAL_ASSERT(compiled_autograd != COMPILED_AUTOGRAD_POISON);
 
@@ -1347,6 +1342,11 @@ auto Engine::execute(
   }
 
   if (compiled_autograd != nullptr) {
+    TORCH_CHECK_NOT_IMPLEMENTED(
+        num_threads_in_compiled_autograd.load() == 0,
+        "Re-entrant into Compiled Autograd from a parent Compiled Autograd call is not yet supported. Consider disabling Compiled Autograd on the re-entrant call.");
+    // Allows us to assert no other threads are in backwards
+    CompiledAutogradThreadingDebugCheck _thread_check;
     // see [Note: Compiled Autograd]
     _thread_check.release();
     GraphTaskGuard guard(graph_task);
@@ -1471,7 +1471,7 @@ c10::intrusive_ptr<at::ivalue::Future> Engine::execute_with_graph_task(
   return graph_task->future_result_;
 }
 
-// note that when python is present, this base engine will be overriden
+// note that when python is present, this base engine will be overridden
 // with a PythonEngine. Because this typically happens before get_default_engine
 // is called, this base engine will never be created.
 Engine& Engine::get_base_engine() {
@@ -1495,8 +1495,8 @@ void Engine::set_compiled_autograd(Engine::compiled_autograd_fn fn) {
   }
   auto prior = the_compiled_autograd.exchange(COMPILED_AUTOGRAD_POISON);
   TORCH_CHECK(
-      num_threads_in_backwards.load() == 0 && prior != COMPILED_AUTOGRAD_POISON,
-      "compiled_autograd._enable() requires no threads in backwards()");
+      prior != COMPILED_AUTOGRAD_POISON,
+      "compiled_autograd._enable() does not support multiple Python threads");
   the_compiled_autograd.store(fn);
 }
 

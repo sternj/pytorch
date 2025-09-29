@@ -285,7 +285,9 @@ def layout(func, *args, **kwargs):
     return _get_data(args[0]).layout
 
 
-@register_dispatch_func([torch.ops.aten.is_contiguous])
+@register_dispatch_func(
+    [torch.ops.aten.is_contiguous, torch.ops.aten.sym_is_contiguous]
+)
 def is_contiguous(func, *args, **kwargs):
     data = _get_data(args[0])
     if data.is_sparse:
@@ -351,7 +353,10 @@ def _apply_fn_on_data(func, *args, **kwargs):
 @register_dispatch_func([torch.ops.aten._to_copy])
 def _to_copy(func, *args, **kwargs):
     new_data = func(_get_data(args[0]), *args[1:], **kwargs)
-    return MaskedTensor(new_data, _maybe_get_mask(args[0]))
+    cloned_kwargs = kwargs.copy()
+    cloned_kwargs["dtype"] = torch.bool
+    new_mask = func(_maybe_get_mask(args[0]), *args[1:], **cloned_kwargs)
+    return MaskedTensor(new_data, new_mask)
 
 
 @register_dispatch_func([torch.ops.aten._softmax])
@@ -411,7 +416,7 @@ def where(func, *args, **kwargs):
         args, kwargs, f"__torch_dispatch__, {func}", len_args=3, len_kwargs=0
     )
     if not torch.is_tensor(args[0]):
-        raise ValueError("__torch_dispatch__, {func}: expected args[0] to be a tensor")
+        raise ValueError(f"__torch_dispatch__, {func}: expected args[0] to be a tensor")
     mx = args[1]
     my = args[2]
     if not is_masked_tensor(mx):

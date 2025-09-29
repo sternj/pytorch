@@ -240,8 +240,8 @@ class DTensor(torch.Tensor):
     # _op_dispatcher instance as a class attribute to handle runtime dispatching logic
     _op_dispatcher: op_dispatch.OpDispatcher = op_dispatch.OpDispatcher()
 
-    @staticmethod
-    @torch._disable_dynamo
+    # This implementation is just to convince mypy _spec and _local_tensor are
+    # initialized; it is immediately overridden below.
     def __new__(
         cls,
         local_tensor: torch.Tensor,
@@ -249,10 +249,21 @@ class DTensor(torch.Tensor):
         *,
         requires_grad: bool,
     ) -> "DTensor":
+        r = torch.Tensor._dtensor__new__(
+            cls, local_tensor, spec, requires_grad=requires_grad
+        )
+        r._spec = spec
+        r._local_tensor = local_tensor
+        return r
+
+    __new__ = torch.Tensor._dtensor__new__  # type: ignore[assignment] # noqa: F811
+
+    @torch._disable_dynamo
+    @mark_subclass_constructor_exportable_experimental
+    def __init__(self, *args, **kwargs):
         """
         Construct a DTensor from a local tensor, device mesh, and placement and
         other tensor properties (i.e. shape, requires_grad, strides, etc).
-
         .. note:: This is not a public API and it's only supposed to be used by the
             operator implementations and internals. If you want to construct a
             DTensor from a local tensor, consider using ``DTensor.from_local``, if
@@ -260,32 +271,6 @@ class DTensor(torch.Tensor):
             already have tensor initialized and want to shard this tensor),
             consider using ``distribute_tensor``.
         """
-        if local_tensor.requires_grad and not requires_grad:
-            warnings.warn(
-                "To construct DTensor from torch.Tensor, it's recommended to "
-                "use local_tensor.detach() and make requires_grad consistent."
-            )
-
-        # new method instruct wrapper tensor from local_tensor and add
-        # placement spec, it does not do actual distribution
-        assert spec.tensor_meta is not None, "TensorMeta should not be None!"
-        r = torch.Tensor._make_wrapper_subclass(
-            cls,
-            spec.tensor_meta.shape,
-            strides=spec.tensor_meta.stride,
-            dtype=local_tensor.dtype,
-            device=local_tensor.device,
-            layout=local_tensor.layout,
-            requires_grad=requires_grad,
-        )
-
-        r._spec = spec
-        r._local_tensor = local_tensor
-        return r
-
-    @torch._disable_dynamo
-    @mark_subclass_constructor_exportable_experimental
-    def __init__(self, *args, **kwargs):
         super().__init__()
 
     # pyre-fixme[14]: `__repr__` overrides method defined in `DTensor` inconsistently.
@@ -346,7 +331,7 @@ class DTensor(torch.Tensor):
     @torch._disable_dynamo
     # pyre-fixme[3]: Return type must be annotated.
     # pyre-fixme[2]: Parameter must be annotated.
-    def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+    def __torch_dispatch__(cls, func, types, args=(), kwargs=None):  # type: ignore[override]
         return DTensor._op_dispatcher.dispatch(
             func,
             args,
@@ -486,7 +471,7 @@ class DTensor(torch.Tensor):
     ) -> "DTensor":
         """
         ``redistribute`` performs necessary collective operations that redistribute the current
-        DTensor from its current placements to a new placements, or from is current DeviceMesh
+        DTensor from its current placements to a new placements, or from its current DeviceMesh
         to a new DeviceMesh. i.e. we can turn a Sharded DTensor to a Replicated DTensor by
         specifying a Replicate placement for each dimension of the DeviceMesh.
 
@@ -563,7 +548,7 @@ class DTensor(torch.Tensor):
         """
         Return the full tensor of this DTensor. It will perform necessary collectives
         to gather the local tensors from other ranks in its DeviceMesh and concatenate
-        them together. It's a syntatic sugar of the following code:
+        them together. It's a syntactic sugar of the following code:
 
         ``dtensor.redistribute(placements=[Replicate()] * mesh.ndim).to_local()``
 
@@ -607,7 +592,21 @@ class DTensor(torch.Tensor):
         """
         return self._spec.placements
 
+    def _raise_if_contains_partial_placements(self) -> None:
+        """
+        Raise an error if the DTensor contains partial placements.
+        """
+        for placement in self._spec.placements:
+            if not isinstance(placement, Partial):
+                continue
+
+            raise ValueError(
+                "Any checkpointing related operations are not supported for "
+                "DTensor with partial placements!"
+            )
+
     def __create_write_items__(self, fqn: str, object: Any):
+        self._raise_if_contains_partial_placements()
         from torch.distributed.checkpoint.planner_helpers import (
             _create_write_items_for_dtensor,
         )
@@ -630,6 +629,7 @@ class DTensor(torch.Tensor):
         Returns:
             A List[:class:`ChunkStorageMetadata`] object that represents the shard size/offset on the current rank.
         """
+        self._raise_if_contains_partial_placements()
         from torch.distributed.checkpoint.planner_helpers import (
             _create_chunk_from_dtensor,
         )
@@ -642,6 +642,7 @@ class DTensor(torch.Tensor):
             raise RuntimeError("Unsupported tensor type!")
 
     def __get_tensor_shard__(self, index):
+        self._raise_if_contains_partial_placements()
         if hasattr(self._local_tensor, "__get_tensor_shard__"):
             return self._local_tensor.__get_tensor_shard__(index)  # type: ignore[attr-defined]
         elif isinstance(self._local_tensor, torch.Tensor):
@@ -1003,7 +1004,7 @@ def _dtensor_init_helper(  # type: ignore[no-untyped-def]
     # set default placements to replicated if not specified
     placements = placements or tuple(Replicate() for _ in range(device_mesh.ndim))
 
-    # check device_mesh againts placements
+    # check device_mesh against placements
     assert device_mesh.ndim == len(placements), (
         "mesh dimension does not match the length of placements"
     )
